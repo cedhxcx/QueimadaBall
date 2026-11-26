@@ -297,13 +297,13 @@ function draw() {
 
   ctx.fillStyle='#fff';ctx.font='700 24px system-ui';ctx.textAlign='center';ctx.fillText(score.blue+'  AZUL',W/2-90,34);ctx.fillText(score.red+'  VERMELHO',W/2+90,34);
   document.getElementById('score').textContent='AZUL '+score.blue+' — '+score.red+' VERMELHO';
-  const lp=localPlayer();
+  const abilityPlayer=localPlayer();
   const now=performance.now();
-  const defendActive=now<(lp?.defendingUntil||0);
-  const defendRemaining=Math.max(0,((lp?.defendCooldownUntil||0)-now)/1000);
+  const defendActive=now<(abilityPlayer?.defendingUntil||0);
+  const defendRemaining=Math.max(0,((abilityPlayer?.defendCooldownUntil||0)-now)/1000);
   const ability=document.getElementById('abilityStatus');
   if(defendActive){
-    ability.textContent='DEFENDENDO • '+Math.max(0,(lp.defendingUntil-now)/1000).toFixed(1)+'s';
+    ability.textContent='DEFENDENDO • '+Math.max(0,(abilityPlayer.defendingUntil-now)/1000).toFixed(1)+'s';
     ability.style.color='#60a5fa';
     document.getElementById('defendBtn')?.classList.remove('cooldown');
   }else if(defendRemaining>0){
