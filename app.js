@@ -22,19 +22,36 @@ function randomRoom() { return Math.random().toString(36).slice(2,8).toUpperCase
 function showGame() { menu.hidden = true; gameShell.hidden = false; }
 
 function createRoom() {
+  if (typeof Peer !== 'function') {
+    setStatus('Falha ao carregar o sistema de salas. Atualize a página.');
+    return;
+  }
+  const createBtn=document.getElementById('createBtn');
+  createBtn.disabled=true;
   isHost = true;
   roomId = randomRoom();
   localId = 'p-host';
   setStatus('Criando sala...');
   peer = new Peer('queimada-' + roomId);
   peer.on('open', () => {
+    createBtn.disabled=false;
     initHost();
     showGame();
     history.replaceState({}, '', '?room=' + roomId);
     document.getElementById('roomInfo').textContent = 'Sala ' + roomId;
   });
   peer.on('connection', acceptConnection);
-  peer.on('error', err => setStatus('Não foi possível criar a sala: ' + err.type));
+  peer.on('error', err => {
+    createBtn.disabled=false;
+    setStatus('Não foi possível criar a sala: ' + (err.type||'erro de conexão'));
+  });
+  setTimeout(() => {
+    if (!gameShell.hidden) return;
+    if (!peer || peer.destroyed) {
+      createBtn.disabled=false;
+      setStatus('Não foi possível conectar ao servidor de salas. Atualize a página.');
+    }
+  },8000);
 }
 
 function joinRoom() {
@@ -119,11 +136,22 @@ function getLocalInput() {
   return { up:!!(keys.w||keys.arrowup), down:!!(keys.s||keys.arrowdown), left:!!(keys.a||keys.arrowleft), right:!!(keys.d||keys.arrowright), defend:!!(keys.shift||keys.e) };
 }
 
+function cappedAim(p, tx, ty) {
+  const dx=tx-p.x, dy=ty-p.y;
+  const length=Math.hypot(dx,dy);
+  const max=220;
+  if(length<=max) return {x:tx,y:ty};
+  const scale=max/(length||1);
+  return {x:p.x+dx*scale,y:p.y+dy*scale};
+}
+
 function throwFromLocal() {
   const p = localPlayer();
   if (!p || ball.owner !== p) return;
   let tx=mouse.x, ty=mouse.y;
   if (lastTouchAim) { tx=lastTouchAim.x; ty=lastTouchAim.y; }
+  const aim=cappedAim(p,tx,ty);
+  tx=aim.x; ty=aim.y;
   const throwData={tx,ty,speed:7+mouse.charge*11};
   if (isHost) throwBall(p,tx,ty,throwData.speed); else hostConnection.send({type:'input',id:localId,input:getLocalInput(),aim:throwData});
 }
@@ -179,6 +207,7 @@ function beginElimination(p) {
   p.reintegrationAt=performance.now()+5000;
   p.vx=0;
   p.vy=0;
+  checkVictory();
 }
 
 function updateReintegration(now) {
@@ -202,11 +231,11 @@ function updateHost(dt) {
     else {
       let input=p.input;
       if(p.id===localId) input=getLocalInput();
-      const acc=.48;
+      const acc=.24;
       if(input?.up)p.vy-=acc; if(input?.down)p.vy+=acc;
       if(input?.left)p.vx-=acc; if(input?.right)p.vx+=acc;
       const movingSpeed=Math.hypot(p.vx,p.vy);
-      const maxSpeed=p.inCemetery?5.3:6.2;
+      const maxSpeed=p.inCemetery?2.65:3.1;
       if(movingSpeed>maxSpeed){p.vx=p.vx/movingSpeed*maxSpeed;p.vy=p.vy/movingSpeed*maxSpeed;}
       if(input?.defend) tryDefend(p);
       if(p.aim?.tx!==undefined) { throwBall(p,p.aim.tx,p.aim.ty,p.aim.speed); p.aim=null; }
@@ -251,8 +280,8 @@ function updateBot(p) {
 }
 
 function checkVictory() {
-  const activeRed=players.filter(p=>p.team==='red'&&!p.inCemetery);
-  const activeBlue=players.filter(p=>p.team==='blue'&&!p.inCemetery);
+  const activeRed=players.filter(p=>p.team==='red'&&!p.inCemetery&&!p.dying);
+  const activeBlue=players.filter(p=>p.team==='blue'&&!p.inCemetery&&!p.dying);
   if(!activeBlue.length){score.red++;matchOver=true;resetAfterWin();}
   if(!activeRed.length){score.blue++;matchOver=true;resetAfterWin();}
 }
@@ -273,7 +302,7 @@ function draw() {
   ctx.beginPath();ctx.arc(W/2,H/2,60,0,Math.PI*2);ctx.stroke();
 
   const lp=localPlayer();
-  if(mouse.down&&lp&&ball.owner===lp){ctx.strokeStyle='#ffdd59b0';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(lp.x,lp.y);ctx.lineTo(mouse.x,mouse.y);ctx.stroke();}
+  if(mouse.down&&lp&&ball.owner===lp){const aim=cappedAim(lp,mouse.x,mouse.y);ctx.strokeStyle='#ffdd59b0';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(lp.x,lp.y);ctx.lineTo(aim.x,aim.y);ctx.stroke();}
 
   players.forEach(p=>{
     const now=performance.now();
