@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>QueimadaBall</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="menu" class="panel">
+    <h1>🔥 QueimadaBall</h1>
+    <p>6 contra 6 • estilo HaxBall • até 12 jogadores</p>
+    <label>Seu nome
+      <input id="nameInput" maxlength="16" value="Jogador" autocomplete="name">
+    </label>
+    <button id="createBtn" class="primary">Criar sala</button>
+    <div class="join-row">
+      <input id="roomInput" maxlength="32" placeholder="Código da sala" aria-label="Código da sala">
+      <button id="joinBtn">Entrar</button>
+    </div>
+    <p id="status" role="status">Pronto para jogar</p>
+  </div>
+
+  <main id="gameShell" hidden>
+    <div id="topbar">
+      <span id="roomInfo"></span>
+      <span id="score">AZUL 0 — 0 VERMELHO</span>
+      <button id="copyBtn">Copiar convite</button>
+    </div>
+    <div id="canvasWrap">
+      <canvas id="game" width="1000" height="520"></canvas>
+      <div id="mobileControls">
+        <div id="joystick"><div id="stick"></div></div>
+        <button id="throwBtn">ARREMESSAR</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
