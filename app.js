@@ -89,7 +89,7 @@ function makePlayer(id,name,team,isBot=false) {
   const redN = players.filter(p=>p.team==='red').length;
   const blueN = players.filter(p=>p.team==='blue').length;
   const n = team === 'red' ? redN : blueN;
-  return { id,name,team,isBot, x:base+(isBot?(n%3)*18:0), y:[260,120,400,180,340,260][n%6], vx:0,vy:0,inCemetery:false,input:{},aim:null,defendCooldownUntil:0 };
+  return { id,name,team,isBot, x:base+(isBot?(n%3)*18:0), y:[260,120,400,180,340,260][n%6], vx:0,vy:0,inCemetery:false,dying:false,reintegrationAt:0,input:{},aim:null,defendingUntil:0,defendCooldownUntil:0 };
 }
 
 function initHost() {
@@ -159,23 +159,45 @@ function removePlayer(id) {
 }
 
 function tryDefend(p) {
-  if (ball.owner || p.inCemetery) return;
+  if (ball.owner || p.inCemetery || p.dying) return;
   const now = performance.now();
+  if (now < (p.defendingUntil || 0)) return;
   if (now < (p.defendCooldownUntil || 0)) return;
-  if (Math.hypot(ball.x-p.x, ball.y-p.y) <= PR+BR+10) {
+  if (Math.hypot(ball.x-p.x, ball.y-p.y) <= PR*2) {
     ball.owner=p;
     ball.hot=false;
     ball.vx=0;
     ball.vy=0;
+    p.defendingUntil=now+1000;
     p.defendCooldownUntil=now+5000;
   }
 }
 
+function beginElimination(p) {
+  if (p.dying || p.inCemetery) return;
+  p.dying=true;
+  p.reintegrationAt=performance.now()+5000;
+  p.vx=0;
+  p.vy=0;
+}
+
+function updateReintegration(now) {
+  players.forEach(p => {
+    if (p.dying && now >= p.reintegrationAt) {
+      p.dying=false;
+      p.reintegrationAt=0;
+      sendToCemetery(p);
+    }
+  });
+}
+
 function updateHost(dt) {
   if (matchOver) return;
+  updateReintegration(performance.now());
   if(mouse.down && ball.owner===localPlayer()) mouse.charge=Math.min(1,mouse.charge+0.03);
 
   players.forEach(p => {
+    if (p.dying) { p.vx=0; p.vy=0; return; }
     if (p.isBot) updateBot(p);
     else {
       let input=p.input;
@@ -202,9 +224,9 @@ function updateHost(dt) {
     if(Math.hypot(ball.vx,ball.vy)<4.5) ball.hot=false;
 
     players.forEach(p => {
-      if(Math.hypot(ball.x-p.x,ball.y-p.y)<PR+BR) {
+      if(!p.dying && Math.hypot(ball.x-p.x,ball.y-p.y)<PR+BR) {
         if(ball.hot && ball.lastTeam!==p.team && !p.inCemetery) {
-          sendToCemetery(p); ball.hot=false; ball.vx*=-.3; ball.vy*=-.3;
+          beginElimination(p); ball.hot=false; ball.vx*=-.3; ball.vy*=-.3;
           const thrower=players.find(x=>x.team===ball.lastTeam&&x.inCemetery);
           if(thrower) returnFromCemetery(thrower);
           checkVictory();
@@ -217,7 +239,7 @@ function updateHost(dt) {
 }
 
 function updateBot(p) {
-  if (!ball.owner && Math.hypot(ball.x-p.x,ball.y-p.y) < PR+BR+14) tryDefend(p);
+  if (!ball.owner && Math.hypot(ball.x-p.x,ball.y-p.y) < PR*2) tryDefend(p);
   if(ball.owner===p) {
     const enemies=players.filter(e=>e.team!==p.team&&!e.inCemetery);
     if(enemies.length) { const e=enemies[Math.floor(Math.random()*enemies.length)]; throwBall(p,e.x+(Math.random()*30-15),e.y+(Math.random()*30-15),10+Math.random()*3); }
@@ -234,7 +256,7 @@ function checkVictory() {
   if(!activeBlue.length){score.red++;matchOver=true;resetAfterWin();}
   if(!activeRed.length){score.blue++;matchOver=true;resetAfterWin();}
 }
-function resetAfterWin(){ setTimeout(()=>{matchOver=false;players.forEach(p=>{p.inCemetery=false;p.x=p.team==='red'?300:700;p.y=260;p.vx=p.vy=0;});ball.owner=players.find(p=>p.team==='blue')||null;},2200); }
+function resetAfterWin(){ setTimeout(()=>{matchOver=false;players.forEach(p=>{p.inCemetery=false;p.dying=false;p.reintegrationAt=0;p.x=p.team==='red'?300:700;p.y=260;p.vx=p.vy=0;});ball.owner=players.find(p=>p.team==='blue')||null;},2200); }
 
 function broadcast() {
   sendCounter++;
@@ -254,9 +276,21 @@ function draw() {
   if(mouse.down&&lp&&ball.owner===lp){ctx.strokeStyle='#ffdd59b0';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(lp.x,lp.y);ctx.lineTo(mouse.x,mouse.y);ctx.stroke();}
 
   players.forEach(p=>{
-    ctx.beginPath();ctx.arc(p.x,p.y,PR,0,Math.PI*2);ctx.fillStyle=p.team==='red'?'#e55039':'#3c6382';ctx.fill();ctx.lineWidth=p.id===localId?4:2;ctx.strokeStyle=p.id===localId?'#f6b93b':'#fff';ctx.stroke();
-    const remaining=(p.defendCooldownUntil||0)-performance.now();
-    if(p.id===localId && remaining>0){ctx.beginPath();ctx.arc(p.x,p.y,PR+7,0,Math.PI*2);ctx.strokeStyle='#60a5fa';ctx.lineWidth=3;ctx.stroke();}
+    const now=performance.now();
+    if(p.dying){
+      const remaining=Math.max(0,(p.reintegrationAt||now)-now);
+      ctx.save();ctx.globalAlpha=.12+Math.max(0,remaining/5000)*.88;
+      ctx.beginPath();ctx.arc(p.x,p.y,PR*(.3+remaining/5000*.7),0,Math.PI*2);ctx.fillStyle='#e9edf3';ctx.fill();
+      ctx.restore();
+      return;
+    }
+    ctx.beginPath();ctx.arc(p.x,p.y,PR,0,Math.PI*2);
+    const defending=now<(p.defendingUntil||0);
+    ctx.fillStyle=defending?(p.team==='red'?'#60a5fa':'#93c5fd'):(p.team==='red'?'#e55039':'#3c6382');ctx.fill();
+    ctx.lineWidth=p.id===localId?4:2;ctx.strokeStyle=p.id===localId?'#f6b93b':'#fff';ctx.stroke();
+    if(defending){ctx.beginPath();ctx.arc(p.x,p.y,PR*2,0,Math.PI*2);ctx.strokeStyle='#60a5fa';ctx.lineWidth=3;ctx.setLineDash([6,5]);ctx.stroke();ctx.setLineDash([]);}
+    const remaining=(p.defendCooldownUntil||0)-now;
+    if(p.id===localId && remaining>0){ctx.beginPath();ctx.arc(p.x,p.y,PR+7,0,Math.PI*2);ctx.strokeStyle='#94a3b8';ctx.lineWidth=3;ctx.stroke();}
     ctx.fillStyle='#fff';ctx.font='10px system-ui';ctx.textAlign='center';ctx.fillText(p.name,p.x,p.y-PR-6);
   });
   ctx.beginPath();ctx.arc(ball.x,ball.y,BR,0,Math.PI*2);ctx.fillStyle=ball.hot?'#ffdd59':'#fff';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#111';ctx.stroke();
@@ -264,13 +298,21 @@ function draw() {
   ctx.fillStyle='#fff';ctx.font='700 24px system-ui';ctx.textAlign='center';ctx.fillText(score.blue+'  AZUL',W/2-90,34);ctx.fillText(score.red+'  VERMELHO',W/2+90,34);
   document.getElementById('score').textContent='AZUL '+score.blue+' — '+score.red+' VERMELHO';
   const lp=localPlayer();
-  const defendRemaining=Math.max(0,((lp?.defendCooldownUntil||0)-performance.now())/1000);
+  const now=performance.now();
+  const defendActive=now<(lp?.defendingUntil||0);
+  const defendRemaining=Math.max(0,((lp?.defendCooldownUntil||0)-now)/1000);
   const ability=document.getElementById('abilityStatus');
-  if(defendRemaining>0){
+  if(defendActive){
+    ability.textContent='DEFENDENDO • '+Math.max(0,(lp.defendingUntil-now)/1000).toFixed(1)+'s';
+    ability.style.color='#60a5fa';
+    document.getElementById('defendBtn')?.classList.remove('cooldown');
+  }else if(defendRemaining>0){
     ability.textContent='Defesa: '+defendRemaining.toFixed(1)+'s';
+    ability.style.color='#94a3b8';
     document.getElementById('defendBtn')?.classList.add('cooldown');
   }else{
     ability.textContent='SHIFT/E: defender';
+    ability.style.color='#93c5fd';
     document.getElementById('defendBtn')?.classList.remove('cooldown');
   }
 }
