@@ -25,13 +25,17 @@
     <div id="topbar">
       <span id="roomInfo"></span>
       <span id="score">AZUL 0 — 0 VERMELHO</span>
+      <span id="abilityStatus">SHIFT/E: defender</span>
       <button id="copyBtn">Copiar convite</button>
     </div>
     <div id="canvasWrap">
       <canvas id="game" width="1000" height="520"></canvas>
       <div id="mobileControls">
         <div id="joystick"><div id="stick"></div></div>
-        <button id="throwBtn">ARREMESSAR</button>
+        <div class="action-buttons">
+          <button id="defendBtn">DEFENDER</button>
+          <button id="throwBtn">ARREMESSAR</button>
+        </div>
       </div>
     </div>
   </main>

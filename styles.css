@@ -23,4 +23,9 @@ canvas { max-width: 100%; max-height: 100%; width: auto; height: auto; aspect-ra
 #joystick { width: 112px; height: 112px; border-radius: 50%; background: #ffffff18; border: 2px solid #ffffff55; position: relative; pointer-events: auto; touch-action: none; }
 #stick { width: 52px; height: 52px; border-radius: 50%; position: absolute; left: 28px; top: 28px; background: #ffffff70; }
 #throwBtn { width: 112px; height: 112px; border-radius: 50%; background: #ef5b46cc; pointer-events: auto; touch-action: none; }
+.action-buttons { display: flex; align-items: end; gap: 10px; pointer-events: auto; }
+.action-buttons button { width: 112px; height: 112px; border-radius: 50%; touch-action: none; }
+#defendBtn { background: #3b82f6cc; }
+#defendBtn.cooldown { background: #64748bcc; color: #cbd5e1; }
+#abilityStatus { font-weight: 800; color: #93c5fd; }
 @media (hover: none), (max-width: 850px) { #mobileControls { display: flex; } #topbar { font-size: 12px; } #roomInfo { max-width: 150px; overflow: hidden; } }

@@ -89,7 +89,7 @@ function makePlayer(id,name,team,isBot=false) {
   const redN = players.filter(p=>p.team==='red').length;
   const blueN = players.filter(p=>p.team==='blue').length;
   const n = team === 'red' ? redN : blueN;
-  return { id,name,team,isBot, x:base+(isBot?(n%3)*18:0), y:[260,120,400,180,340,260][n%6], vx:0,vy:0,inCemetery:false,input:{},aim:null };
+  return { id,name,team,isBot, x:base+(isBot?(n%3)*18:0), y:[260,120,400,180,340,260][n%6], vx:0,vy:0,inCemetery:false,input:{},aim:null,defendCooldownUntil:0 };
 }
 
 function initHost() {
@@ -116,7 +116,7 @@ window.addEventListener('mouseup', () => {
 });
 
 function getLocalInput() {
-  return { up:!!(keys.w||keys.arrowup), down:!!(keys.s||keys.arrowdown), left:!!(keys.a||keys.arrowleft), right:!!(keys.d||keys.arrowright) };
+  return { up:!!(keys.w||keys.arrowup), down:!!(keys.s||keys.arrowdown), left:!!(keys.a||keys.arrowleft), right:!!(keys.d||keys.arrowright), defend:!!(keys.shift||keys.e) };
 }
 
 function throwFromLocal() {
@@ -158,6 +158,19 @@ function removePlayer(id) {
   if(i>=0) players.splice(i,1);
 }
 
+function tryDefend(p) {
+  if (ball.owner || p.inCemetery) return;
+  const now = performance.now();
+  if (now < (p.defendCooldownUntil || 0)) return;
+  if (Math.hypot(ball.x-p.x, ball.y-p.y) <= PR+BR+10) {
+    ball.owner=p;
+    ball.hot=false;
+    ball.vx=0;
+    ball.vy=0;
+    p.defendCooldownUntil=now+5000;
+  }
+}
+
 function updateHost(dt) {
   if (matchOver) return;
   if(mouse.down && ball.owner===localPlayer()) mouse.charge=Math.min(1,mouse.charge+0.03);
@@ -167,12 +180,16 @@ function updateHost(dt) {
     else {
       let input=p.input;
       if(p.id===localId) input=getLocalInput();
-      const acc=.62;
+      const acc=.48;
       if(input?.up)p.vy-=acc; if(input?.down)p.vy+=acc;
       if(input?.left)p.vx-=acc; if(input?.right)p.vx+=acc;
+      const movingSpeed=Math.hypot(p.vx,p.vy);
+      const maxSpeed=p.inCemetery?5.3:6.2;
+      if(movingSpeed>maxSpeed){p.vx=p.vx/movingSpeed*maxSpeed;p.vy=p.vy/movingSpeed*maxSpeed;}
+      if(input?.defend) tryDefend(p);
       if(p.aim?.tx!==undefined) { throwBall(p,p.aim.tx,p.aim.ty,p.aim.speed); p.aim=null; }
     }
-    p.vx*=.88; p.vy*=.88; p.x+=p.vx; p.vy+=0; p.y+=p.vy; constrain(p);
+    p.vx*=.965; p.vy*=.965; p.x+=p.vx; p.y+=p.vy; constrain(p);
   });
 
   if(ball.owner) {
@@ -200,6 +217,7 @@ function updateHost(dt) {
 }
 
 function updateBot(p) {
+  if (!ball.owner && Math.hypot(ball.x-p.x,ball.y-p.y) < PR+BR+14) tryDefend(p);
   if(ball.owner===p) {
     const enemies=players.filter(e=>e.team!==p.team&&!e.inCemetery);
     if(enemies.length) { const e=enemies[Math.floor(Math.random()*enemies.length)]; throwBall(p,e.x+(Math.random()*30-15),e.y+(Math.random()*30-15),10+Math.random()*3); }
@@ -237,12 +255,24 @@ function draw() {
 
   players.forEach(p=>{
     ctx.beginPath();ctx.arc(p.x,p.y,PR,0,Math.PI*2);ctx.fillStyle=p.team==='red'?'#e55039':'#3c6382';ctx.fill();ctx.lineWidth=p.id===localId?4:2;ctx.strokeStyle=p.id===localId?'#f6b93b':'#fff';ctx.stroke();
+    const remaining=(p.defendCooldownUntil||0)-performance.now();
+    if(p.id===localId && remaining>0){ctx.beginPath();ctx.arc(p.x,p.y,PR+7,0,Math.PI*2);ctx.strokeStyle='#60a5fa';ctx.lineWidth=3;ctx.stroke();}
     ctx.fillStyle='#fff';ctx.font='10px system-ui';ctx.textAlign='center';ctx.fillText(p.name,p.x,p.y-PR-6);
   });
   ctx.beginPath();ctx.arc(ball.x,ball.y,BR,0,Math.PI*2);ctx.fillStyle=ball.hot?'#ffdd59':'#fff';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#111';ctx.stroke();
 
   ctx.fillStyle='#fff';ctx.font='700 24px system-ui';ctx.textAlign='center';ctx.fillText(score.blue+'  AZUL',W/2-90,34);ctx.fillText(score.red+'  VERMELHO',W/2+90,34);
   document.getElementById('score').textContent='AZUL '+score.blue+' — '+score.red+' VERMELHO';
+  const lp=localPlayer();
+  const defendRemaining=Math.max(0,((lp?.defendCooldownUntil||0)-performance.now())/1000);
+  const ability=document.getElementById('abilityStatus');
+  if(defendRemaining>0){
+    ability.textContent='Defesa: '+defendRemaining.toFixed(1)+'s';
+    document.getElementById('defendBtn')?.classList.add('cooldown');
+  }else{
+    ability.textContent='SHIFT/E: defender';
+    document.getElementById('defendBtn')?.classList.remove('cooldown');
+  }
 }
 
 function loop(now) {
@@ -263,6 +293,10 @@ joystick.addEventListener('pointermove',e=>{if(!joy.active)return;const r=joysti
 joystick.addEventListener('pointerup',()=>{joy.active=false;joy.x=joy.y=0;stick.style.transform='';keys.w=keys.s=keys.a=keys.d=false;});
 document.getElementById('throwBtn').addEventListener('pointerdown',()=>{mouse.down=true;lastTouchAim={x:localPlayer()?.x+(localPlayer()?.team==='red'?400:-400),y:H/2};mouse.charge=.7;});
 document.getElementById('throwBtn').addEventListener('pointerup',()=>{throwFromLocal();mouse.down=false;mouse.charge=0;lastTouchAim=null;});
+const defendBtn=document.getElementById('defendBtn');
+defendBtn.addEventListener('pointerdown',()=>{keys.e=true;});
+defendBtn.addEventListener('pointerup',()=>{keys.e=false;});
+defendBtn.addEventListener('pointercancel',()=>{keys.e=false;});
 
 document.getElementById('createBtn').addEventListener('click',createRoom);
 document.getElementById('joinBtn').addEventListener('click',joinRoom);

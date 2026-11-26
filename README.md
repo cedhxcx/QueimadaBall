@@ -15,7 +15,8 @@ Jogo de queimada multiplayer para navegador, inspirado no visual e na física le
 - **Mouse:** mirar
 - **Segurar o clique:** carregar o arremesso
 - **Soltar:** lançar
-- Controles móveis: joystick + botão **ARREMESSAR**
+- **SHIFT** ou **E:** defender/segurar a bola (cooldown de 5 segundos)
+- Controles móveis: joystick + botões **DEFENDER** e **ARREMESSAR**
 
 ## Hospedagem no GitHub Pages
 
