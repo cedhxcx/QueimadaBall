@@ -95,8 +95,8 @@ function makePlayer(id,name,team,isBot=false) {
 function initHost() {
   players = [];
   players.push(makePlayer(localId, cleanName(), 'red', false));
-  for (let i=0;i<2;i++) players.push(makePlayer('bot-r'+i,'Bot Vermelho '+(i+1),'red',true));
-  for (let i=0;i<3;i++) players.push(makePlayer('bot-b'+i,'Bot Azul '+(i+1),'blue',true));
+  for (let i=0;i<5;i++) players.push(makePlayer('bot-r'+i,'Bot Vermelho '+(i+1),'red',true));
+  for (let i=0;i<6;i++) players.push(makePlayer('bot-b'+i,'Bot Azul '+(i+1),'blue',true));
   ball = {x:500,y:260,vx:0,vy:0,owner:players[0],hot:false,lastTeam:null};
 }
 
