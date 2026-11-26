@@ -93,6 +93,8 @@ function acceptConnection(conn) {
     } else if (data.type === 'input') {
       const p = players.find(x => x.id === data.id);
       if (p) { p.input = data.input; p.aim = data.aim; }
+    } else if (data.type === 'defend') {
+      activateDefense(players.find(x => x.id === data.id));
     }
   });
 }
@@ -119,7 +121,11 @@ function initHost() {
 
 function localPlayer() { return players.find(p => p.id === localId); }
 
-window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener('keydown', e => {
+  const key=e.key.toLowerCase();
+  keys[key]=true;
+  if ((key==='shift'||key==='e') && !e.repeat) activateDefenseInput();
+});
 window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
 canvas.addEventListener('mousemove', e => {
@@ -133,7 +139,7 @@ window.addEventListener('mouseup', () => {
 });
 
 function getLocalInput() {
-  return { up:!!(keys.w||keys.arrowup), down:!!(keys.s||keys.arrowdown), left:!!(keys.a||keys.arrowleft), right:!!(keys.d||keys.arrowright), defend:!!(keys.shift||keys.e) };
+  return { up:!!(keys.w||keys.arrowup), down:!!(keys.s||keys.arrowdown), left:!!(keys.a||keys.arrowleft), right:!!(keys.d||keys.arrowright) };
 }
 
 function cappedAim(p, tx, ty) {
@@ -159,8 +165,9 @@ function throwFromLocal() {
 function throwBall(p,tx,ty,speed) {
   if (ball.owner !== p) return;
   const a=Math.atan2(ty-p.y,tx-p.x);
+  const finalSpeed=p.inCemetery ? speed/3 : speed;
   ball.owner=null; ball.hot=true; ball.lastTeam=p.team;
-  ball.vx=Math.cos(a)*speed; ball.vy=Math.sin(a)*speed;
+  ball.vx=Math.cos(a)*finalSpeed; ball.vy=Math.sin(a)*finalSpeed;
 }
 
 function sendToCemetery(p) {
@@ -186,17 +193,29 @@ function removePlayer(id) {
   if(i>=0) players.splice(i,1);
 }
 
+function activateDefense(p) {
+  if (!p || p.inCemetery || p.dying) return;
+  const now=performance.now();
+  if (now < (p.defendCooldownUntil||0)) return;
+  if (now < (p.defendingUntil||0)) return;
+  p.defendingUntil=now+3000;
+}
+
+function activateDefenseInput() {
+  if (isHost) activateDefense(localPlayer());
+  else if (hostConnection?.open) hostConnection.send({type:'defend',id:localId});
+}
+
 function tryDefend(p) {
-  if (ball.owner || p.inCemetery || p.dying) return;
-  const now = performance.now();
-  if (now < (p.defendingUntil || 0)) return;
-  if (now < (p.defendCooldownUntil || 0)) return;
+  if (!ball.owner || p.inCemetery || p.dying) return;
+  const now=performance.now();
+  if (now >= (p.defendingUntil||0)) return;
+  if (ball.owner.team === p.team) return;
   if (Math.hypot(ball.x-p.x, ball.y-p.y) <= PR*2) {
     ball.owner=p;
     ball.hot=false;
     ball.vx=0;
     ball.vy=0;
-    p.defendingUntil=now+1000;
     p.defendCooldownUntil=now+5000;
   }
 }
@@ -235,9 +254,8 @@ function updateHost(dt) {
       if(input?.up)p.vy-=acc; if(input?.down)p.vy+=acc;
       if(input?.left)p.vx-=acc; if(input?.right)p.vx+=acc;
       const movingSpeed=Math.hypot(p.vx,p.vy);
-      const maxSpeed=p.inCemetery?2.65:3.1;
+      const maxSpeed=p.inCemetery?1.55:3.1;
       if(movingSpeed>maxSpeed){p.vx=p.vx/movingSpeed*maxSpeed;p.vy=p.vy/movingSpeed*maxSpeed;}
-      if(input?.defend) tryDefend(p);
       if(p.aim?.tx!==undefined) { throwBall(p,p.aim.tx,p.aim.ty,p.aim.speed); p.aim=null; }
     }
     p.vx*=.965; p.vy*=.965; p.x+=p.vx; p.y+=p.vy; constrain(p);
@@ -246,6 +264,7 @@ function updateHost(dt) {
   if(ball.owner) {
     const p=ball.owner;
     ball.x=p.x+(p.team==='red'?14:-14); ball.y=p.y;
+    players.forEach(defender=>tryDefend(defender));
   } else {
     ball.x+=ball.vx; ball.y+=ball.vy; ball.vx*=.985; ball.vy*=.985;
     if(ball.y<BR||ball.y>H-BR){ball.vy*=-.8;ball.y=Math.max(BR,Math.min(H-BR,ball.y));}
@@ -256,8 +275,6 @@ function updateHost(dt) {
       if(!p.dying && Math.hypot(ball.x-p.x,ball.y-p.y)<PR+BR) {
         if(ball.hot && ball.lastTeam!==p.team && !p.inCemetery) {
           beginElimination(p); ball.hot=false; ball.vx*=-.3; ball.vy*=-.3;
-          const thrower=players.find(x=>x.team===ball.lastTeam&&x.inCemetery);
-          if(thrower) returnFromCemetery(thrower);
           checkVictory();
         } else if(!ball.hot) {
           ball.owner=p; ball.vx=0; ball.vy=0;
@@ -268,7 +285,7 @@ function updateHost(dt) {
 }
 
 function updateBot(p) {
-  if (!ball.owner && Math.hypot(ball.x-p.x,ball.y-p.y) < PR*2) tryDefend(p);
+  if(ball.owner && ball.owner.team!==p.team && Math.hypot(ball.x-p.x,ball.y-p.y)<PR*2) activateDefense(p);
   if(ball.owner===p) {
     const enemies=players.filter(e=>e.team!==p.team&&!e.inCemetery);
     if(enemies.length) { const e=enemies[Math.floor(Math.random()*enemies.length)]; throwBall(p,e.x+(Math.random()*30-15),e.y+(Math.random()*30-15),10+Math.random()*3); }
@@ -365,7 +382,7 @@ joystick.addEventListener('pointerup',()=>{joy.active=false;joy.x=joy.y=0;stick.
 document.getElementById('throwBtn').addEventListener('pointerdown',()=>{mouse.down=true;lastTouchAim={x:localPlayer()?.x+(localPlayer()?.team==='red'?400:-400),y:H/2};mouse.charge=.7;});
 document.getElementById('throwBtn').addEventListener('pointerup',()=>{throwFromLocal();mouse.down=false;mouse.charge=0;lastTouchAim=null;});
 const defendBtn=document.getElementById('defendBtn');
-defendBtn.addEventListener('pointerdown',()=>{keys.e=true;});
+defendBtn.addEventListener('pointerdown',()=>{activateDefenseInput();});
 defendBtn.addEventListener('pointerup',()=>{keys.e=false;});
 defendBtn.addEventListener('pointercancel',()=>{keys.e=false;});
 
