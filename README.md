@@ -7,7 +7,7 @@ Jogo de queimada multiplayer para navegador, inspirado no visual e na física le
 1. Abra o link hospedado pelo GitHub Pages.
 2. Digite seu nome e clique em **Criar sala**.
 3. Copie o convite ou envie o código da sala aos amigos.
-4. Até 12 pessoas podem entrar por conexão Peer-to-Peer.
+4. No lobby, o anfitrião organiza os times, adiciona/remove bots e inicia a partida. Até 12 participantes podem jogar.
 
 ## Controles
 
@@ -15,7 +15,8 @@ Jogo de queimada multiplayer para navegador, inspirado no visual e na física le
 - **Mouse:** mirar
 - **Segurar o clique:** carregar o arremesso
 - **Soltar:** lançar
-- **SHIFT** ou **E:** ativar a defesa por 3 segundos quando estiver pronta; o cooldown de 5 segundos só diminui enquanto o adversário segura a bola (alcance limitado a 2 raios do personagem)
+- **SHIFT** ou **E:** ativar a defesa por 3 segundos; depois, um cooldown de 3 segundos só diminui enquanto um adversário segura a bola. A mira fica visível apenas para quem está mirando.
+- O anfitrião pode reiniciar a partida para voltar ao lobby, reorganizar os times e ajustar os bots.
 - Se a bola ficar sem dono no cemitério por 1,8 segundo, ela retorna lentamente até a quadra.
 - Ao ser queimado, o personagem se desintegra por 5 segundos antes de aparecer no cemitério e não pode voltar à partida
 - Controles móveis: joystick + botões **DEFENDER** e **ARREMESSAR**

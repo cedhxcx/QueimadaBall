@@ -21,11 +21,29 @@
     <p id="status" role="status">Pronto para jogar</p>
   </div>
 
+  <section id="lobby" class="panel lobby-panel" hidden>
+    <h1>🏟️ Sala de espera</h1>
+    <p id="lobbyRoom"></p>
+    <div id="lobbyRoster" class="lobby-roster"></div>
+    <div id="hostLobbyControls" hidden>
+      <div class="lobby-actions">
+        <button id="addBotBtn">Adicionar bot</button>
+        <button id="removeBotBtn">Remover bot</button>
+        <button id="shuffleBtn">Misturar times</button>
+      </div>
+      <p id="botCount"></p>
+      <button id="startBtn" class="primary">Iniciar partida</button>
+    </div>
+    <p id="lobbyStatus" role="status"></p>
+    <button id="lobbyCopyBtn">Copiar convite</button>
+  </section>
+
   <main id="gameShell" hidden>
     <div id="topbar">
       <span id="roomInfo"></span>
       <span id="score">AZUL 0 — 0 VERMELHO</span>
       <span id="abilityStatus">SHIFT/E: defender</span>
+      <button id="restartBtn" hidden>Reiniciar partida</button>
       <button id="copyBtn">Copiar convite</button>
     </div>
     <div id="canvasWrap">
@@ -40,7 +58,7 @@
     </div>
   </main>
 
-  <script src="peerjs.min.js?v=20261126d"></script>
-  <script src="app.js?v=20261126d"></script>
+  <script src="peerjs.min.js?v=20261127a"></script>
+  <script src="app.js?v=20261127a"></script>
 </body>
 </html>
