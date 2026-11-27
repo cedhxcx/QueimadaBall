@@ -7,8 +7,9 @@ const nameInput = document.getElementById('nameInput');
 const roomInput = document.getElementById('roomInput');
 
 const W = 1000, H = 520, CEM = 90, PR = 16, BR = 10;
+const BALL_RETURN_DELAY = 1800, BALL_RETURN_SPEED = 0.75;
 let peer, hostConnection, isHost = false, roomId = '', localId = '', connections = new Map();
-let players = [], ball = { x:500,y:260,vx:0,vy:0,owner:null,hot:false,lastTeam:null };
+let players = [], ball = { x:500,y:260,vx:0,vy:0,owner:null,hot:false,lastTeam:null,outsideSince:null,returning:false };
 let keys = {}, mouse = {x:500,y:260,down:false,charge:0}, lastTouchAim = null;
 let score = {red:0,blue:0}, matchOver = false, last = performance.now(), sendCounter = 0;
 
@@ -108,7 +109,7 @@ function makePlayer(id,name,team,isBot=false) {
   const redN = players.filter(p=>p.team==='red').length;
   const blueN = players.filter(p=>p.team==='blue').length;
   const n = team === 'red' ? redN : blueN;
-  return { id,name,team,isBot, x:base+(isBot?(n%3)*18:0), y:[260,120,400,180,340,260][n%6], vx:0,vy:0,inCemetery:false,dying:false,reintegrationAt:0,input:{},aim:null,defendingUntil:0,defendCooldownUntil:0 };
+  return { id,name,team,isBot, x:base+(isBot?(n%3)*18:0), y:[260,120,400,180,340,260][n%6], vx:0,vy:0,inCemetery:false,dying:false,reintegrationAt:0,input:{},aim:null,defendingUntil:0,defendCooldownRemaining:0 };
 }
 
 function initHost() {
@@ -116,7 +117,7 @@ function initHost() {
   players.push(makePlayer(localId, cleanName(), 'red', false));
   for (let i=0;i<5;i++) players.push(makePlayer('bot-r'+i,'Bot Vermelho '+(i+1),'red',true));
   for (let i=0;i<6;i++) players.push(makePlayer('bot-b'+i,'Bot Azul '+(i+1),'blue',true));
-  ball = {x:500,y:260,vx:0,vy:0,owner:players[0],hot:false,lastTeam:null};
+  ball = {x:500,y:260,vx:0,vy:0,owner:players[0],hot:false,lastTeam:null,outsideSince:null,returning:false};
 }
 
 function localPlayer() { return players.find(p => p.id === localId); }
@@ -167,6 +168,7 @@ function throwBall(p,tx,ty,speed) {
   const a=Math.atan2(ty-p.y,tx-p.x);
   const finalSpeed=p.inCemetery ? speed/3 : speed;
   ball.owner=null; ball.hot=true; ball.lastTeam=p.team;
+  ball.outsideSince=null; ball.returning=false;
   ball.vx=Math.cos(a)*finalSpeed; ball.vy=Math.sin(a)*finalSpeed;
 }
 
@@ -174,10 +176,6 @@ function sendToCemetery(p) {
   p.inCemetery=true; p.vx=p.vy=0;
   p.x=p.team==='red'?W-CEM/2:CEM/2; p.y=H/2;
 }
-function returnFromCemetery(p) {
-  p.inCemetery=false; p.x=p.team==='red'?300:700; p.y=H/2;
-}
-
 function constrain(p) {
   let minX,maxX;
   if (!p.inCemetery) {
@@ -196,7 +194,7 @@ function removePlayer(id) {
 function activateDefense(p) {
   if (!p || p.inCemetery || p.dying) return;
   const now=performance.now();
-  if (now < (p.defendCooldownUntil||0)) return;
+  if (p.defendCooldownRemaining>0) return;
   if (now < (p.defendingUntil||0)) return;
   p.defendingUntil=now+3000;
 }
@@ -216,7 +214,7 @@ function tryDefend(p) {
     ball.hot=false;
     ball.vx=0;
     ball.vy=0;
-    p.defendCooldownUntil=now+5000;
+    p.defendCooldownRemaining=5000;
   }
 }
 
@@ -241,7 +239,14 @@ function updateReintegration(now) {
 
 function updateHost(dt) {
   if (matchOver) return;
-  updateReintegration(performance.now());
+  const now=performance.now();
+  updateReintegration(now);
+  const elapsedMs=dt*1000/60;
+  players.forEach(p => {
+    if (p.defendCooldownRemaining>0 && ball.owner && ball.owner.team!==p.team) {
+      p.defendCooldownRemaining=Math.max(0,p.defendCooldownRemaining-elapsedMs);
+    }
+  });
   if(mouse.down && ball.owner===localPlayer()) mouse.charge=Math.min(1,mouse.charge+0.03);
 
   players.forEach(p => {
@@ -270,6 +275,7 @@ function updateHost(dt) {
     if(ball.y<BR||ball.y>H-BR){ball.vy*=-.8;ball.y=Math.max(BR,Math.min(H-BR,ball.y));}
     if(ball.x<BR||ball.x>W-BR){ball.vx*=-.8;ball.x=Math.max(BR,Math.min(W-BR,ball.x));}
     if(Math.hypot(ball.vx,ball.vy)<4.5) ball.hot=false;
+    updateBallReturn(dt, now);
 
     players.forEach(p => {
       if(!p.dying && Math.hypot(ball.x-p.x,ball.y-p.y)<PR+BR) {
@@ -278,9 +284,38 @@ function updateHost(dt) {
           checkVictory();
         } else if(!ball.hot) {
           ball.owner=p; ball.vx=0; ball.vy=0;
+          ball.outsideSince=null; ball.returning=false;
         }
       }
     });
+  }
+}
+
+function updateBallReturn(dt, now) {
+  const outsideLeft=ball.x<CEM;
+  const outsideRight=ball.x>W-CEM;
+  if (!outsideLeft && !outsideRight) {
+    ball.outsideSince=null;
+    ball.returning=false;
+    return;
+  }
+
+  if (ball.outsideSince===null) ball.outsideSince=now;
+  if (!ball.returning && now-ball.outsideSince>=BALL_RETURN_DELAY) {
+    ball.returning=true;
+    ball.hot=false;
+    ball.vx=0;
+    ball.vy=0;
+  }
+  if (!ball.returning) return;
+
+  const targetX=outsideLeft?CEM:W-CEM;
+  const distance=targetX-ball.x;
+  const step=Math.min(Math.abs(distance),BALL_RETURN_SPEED*dt);
+  ball.x+=Math.sign(distance)*step;
+  if (step>=Math.abs(distance)) {
+    ball.outsideSince=null;
+    ball.returning=false;
   }
 }
 
@@ -335,7 +370,7 @@ function draw() {
     ctx.fillStyle=defending?(p.team==='red'?'#60a5fa':'#93c5fd'):(p.team==='red'?'#e55039':'#3c6382');ctx.fill();
     ctx.lineWidth=p.id===localId?4:2;ctx.strokeStyle=p.id===localId?'#f6b93b':'#fff';ctx.stroke();
     if(defending){ctx.beginPath();ctx.arc(p.x,p.y,PR*2,0,Math.PI*2);ctx.strokeStyle='#60a5fa';ctx.lineWidth=3;ctx.setLineDash([6,5]);ctx.stroke();ctx.setLineDash([]);}
-    const remaining=(p.defendCooldownUntil||0)-now;
+    const remaining=p.defendCooldownRemaining||0;
     if(p.id===localId && remaining>0){ctx.beginPath();ctx.arc(p.x,p.y,PR+7,0,Math.PI*2);ctx.strokeStyle='#94a3b8';ctx.lineWidth=3;ctx.stroke();}
     ctx.fillStyle='#fff';ctx.font='10px system-ui';ctx.textAlign='center';ctx.fillText(p.name,p.x,p.y-PR-6);
   });
@@ -346,7 +381,7 @@ function draw() {
   const abilityPlayer=localPlayer();
   const now=performance.now();
   const defendActive=now<(abilityPlayer?.defendingUntil||0);
-  const defendRemaining=Math.max(0,((abilityPlayer?.defendCooldownUntil||0)-now)/1000);
+  const defendRemaining=Math.max(0,(abilityPlayer?.defendCooldownRemaining||0)/1000);
   const ability=document.getElementById('abilityStatus');
   if(defendActive){
     ability.textContent='DEFENDENDO • '+Math.max(0,(abilityPlayer.defendingUntil-now)/1000).toFixed(1)+'s';

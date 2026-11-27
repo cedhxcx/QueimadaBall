@@ -15,7 +15,8 @@ Jogo de queimada multiplayer para navegador, inspirado no visual e na física le
 - **Mouse:** mirar
 - **Segurar o clique:** carregar o arremesso
 - **Soltar:** lançar
-- **SHIFT** ou **E:** ativar a defesa por 3 segundos quando estiver pronta; o cooldown de 5 segundos só começa ao defender uma bola segurada pelo time adversário (alcance limitado a 2 raios do personagem; cooldown de 5 segundos)
+- **SHIFT** ou **E:** ativar a defesa por 3 segundos quando estiver pronta; o cooldown de 5 segundos só diminui enquanto o adversário segura a bola (alcance limitado a 2 raios do personagem)
+- Se a bola ficar sem dono no cemitério por 1,8 segundo, ela retorna lentamente até a quadra.
 - Ao ser queimado, o personagem se desintegra por 5 segundos antes de aparecer no cemitério e não pode voltar à partida
 - Controles móveis: joystick + botões **DEFENDER** e **ARREMESSAR**
 
