@@ -112,7 +112,7 @@ function joinRoom() {
     });
     hostConnection.on('data', data => {
       if (data.type === 'state') {
-        players = data.players;
+        players = restorePlayerTimers(data.players);
         ball = data.ball;
         score = data.score;
         matchOver = data.matchOver;
@@ -341,17 +341,32 @@ function activateDefenseInput() {
   else if (hostConnection?.open) hostConnection.send({type:'defend',id:localId});
 }
 
+function catchBall(p) {
+  ball.owner=p;
+  ball.hot=false;
+  ball.vx=0;
+  ball.vy=0;
+  ball.throwerId=null;
+  ball.ignoreThrowerUntil=0;
+  ball.outsideSince=null;
+  ball.returning=false;
+  if(p.isBot){
+    const targets=players.filter(other=>other.team!==p.team&&!other.inCemetery);
+    p.botThrowAt=performance.now()+700;
+    p.botTargetId=targets.length?targets[Math.floor(Math.random()*targets.length)].id:null;
+  }else{
+    p.botThrowAt=0;
+    p.botTargetId=null;
+  }
+}
+
 function tryDefend(p) {
   if (!ball.owner || p.inCemetery || p.dying) return;
   const now=performance.now();
   if (now >= (p.defendingUntil||0)) return;
   if (ball.owner.team === p.team) return;
   if (Math.hypot(ball.x-p.x, ball.y-p.y) <= PR*2) {
-    ball.owner=p;
-    ball.hot=false;
-    ball.vx=0;
-    ball.vy=0;
-    ball.throwerId=null;ball.ignoreThrowerUntil=0;
+    catchBall(p);
   }
 }
 
@@ -414,25 +429,23 @@ function updateHost(dt) {
     if(Math.hypot(ball.vx,ball.vy)<4.5) ball.hot=false;
     updateBallReturn(dt, now);
 
-    players.forEach(p => {
-      if(!p.dying && !(p.id===ball.throwerId&&now<ball.ignoreThrowerUntil) && Math.hypot(ball.x-p.x,ball.y-p.y)<PR+BR) {
-        if(ball.hot && ball.lastTeam!==p.team && !p.inCemetery) {
-          beginElimination(p); ball.hot=false; ball.vx*=-.3; ball.vy*=-.3;
-        } else if(!ball.hot || ball.lastTeam===p.team) {
-          ball.owner=p; ball.vx=0; ball.vy=0;
-          ball.throwerId=null;ball.ignoreThrowerUntil=0;
-          ball.outsideSince=null; ball.returning=false;
-          if(p.isBot){
-            const targets=players.filter(other=>other.team!==p.team&&!other.inCemetery);
-            p.botThrowAt=performance.now()+700;
-            p.botTargetId=targets.length?targets[Math.floor(Math.random()*targets.length)].id:null;
-          }else{
-            p.botThrowAt=0;
-            p.botTargetId=null;
-          }
+    for (const p of players) {
+      if(p.dying || (p.id===ball.throwerId&&now<ball.ignoreThrowerUntil) || Math.hypot(ball.x-p.x,ball.y-p.y)>=PR+BR) continue;
+      if(ball.hot && ball.lastTeam!==p.team && !p.inCemetery) {
+        if(now<(p.defendingUntil||0)) catchBall(p);
+        else {
+          beginElimination(p);
+          ball.hot=false;
+          ball.vx*=-.3;
+          ball.vy*=-.3;
         }
+        break;
       }
-    });
+      if(!ball.hot || ball.lastTeam===p.team) {
+        catchBall(p);
+        break;
+      }
+    }
   }
 }
 
@@ -500,10 +513,30 @@ function checkVictory() {
 function broadcast() {
   sendCounter++;
   if(sendCounter%2) return;
-  const publicPlayers=players.map(p=>({...p,input:{},aim:null,botTargetId:null}));
+  const now=performance.now();
+  const publicPlayers=players.map(p=>{
+    const {defendingUntil,reintegrationAt,...publicPlayer}=p;
+    return {
+      ...publicPlayer,
+      defendingRemaining:Math.max(0,(defendingUntil||0)-now),
+      reintegrationRemaining:Math.max(0,(reintegrationAt||0)-now),
+      input:{},
+      aim:null,
+      botTargetId:null
+    };
+  });
   const publicBall={...ball,owner:ball.owner?publicPlayers.find(p=>p.id===ball.owner.id)||null:null};
   const state={type:'state',phase:gamePhase,players:publicPlayers,ball:publicBall,score,matchOver,winner};
   connections.forEach(conn=>{ if(conn.open) conn.send(state); });
+}
+
+function restorePlayerTimers(publicPlayers) {
+  const receivedAt=performance.now();
+  return publicPlayers.map(({defendingRemaining=0,reintegrationRemaining=0,...p})=>({
+    ...p,
+    defendingUntil:receivedAt+defendingRemaining,
+    reintegrationAt:receivedAt+reintegrationRemaining
+  }));
 }
 
 function draw() {
